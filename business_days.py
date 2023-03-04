@@ -111,3 +111,75 @@ class CurveDate(CountryHoliday):
             delta_fraction = delta.days / 360.0
             
             return delta_fraction
+
+
+class YieldCurve(CurveDate,CountryHoliday):
+    def __init__(self):
+        self.dfcurve = pd.DataFrame() # initialize dataframe for curve data
+    
+    def __GetSwapCurveData__(self):
+        filein = 'swapcurvedata.xlsx'
+        self.dfcurve = pd.read_excel(filein, sheet_name='curvedata', index_col='Tenor')
+        self.dfcurveparams = pd.read_excel(filein, sheet_name='curveparams')
+        self.dfcurveparams.loc[self.dfcurveparams.index[0], 'Date'] = date.today()
+        
+        busdayconv = self.dfcurveparams['BusDayConv'].iloc[0]
+        calendar = self.dfcurveparams['Calendar'].iloc[0]
+        curvedate = self.dfcurveparams['Date'].iloc[0]
+        while (self._IsWeekend_(curvedate) or self._IsHoliday_(curvedate,calendar)):
+            curvedate = curvedate + relativedelta(days=+1)
+        curvesettledays = self.dfcurveparams['SettleDays'].iloc[0]
+        curvesettledate = self._AddBusinessDays_(curvedate,curvesettledays,busdayconv,calendar)
+        
+    self.dfcurveparams.loc[self.dfcurveparams.index[0], 'SettleDate'] = \   curvesettledate
+
+
+
+    def _DatesForTenors_(self):
+            curvesettledate = self.dfcurveparams['SettleDate'].iloc[0]
+            busdayconv = self.dfcurveparams['BusDayConv'].iloc[0]
+            calendar = self.dfcurveparams['Calendar'].iloc[0]
+            
+            self.dfcurve.loc[self.dfcurve.index=='ON', 'Date'] = \
+                            self._AddBusinessDays_(curvesettledate,1,busdayconv,calendar)
+            self.dfcurve.loc[self.dfcurve.index=='1W', 'Date'] = \
+                            self._AddBusinessDays_(curvesettledate,5,busdayconv,calendar)
+            for i in range (len(self.dfcurve)):
+                if self.dfcurve.index[i][-1] == 'M':
+                    num = int(self.dfcurve.index[i][:-1])       
+                    self.dfcurve.loc[self.dfcurve.index[i],'Date'] = \
+                            self._AddBusinessMonths_(curvesettledate,num,busdayconv,calendar)
+                elif self.dfcurve.index[i][-1] == 'Y':
+                    num = int(self.dfcurve.index[i][:-1])       
+                    self.dfcurve.loc[self.dfcurve.index[i],'Date'] = \
+                    self._AddBusinessYears_(curvesettledate,num,busdayconv,calendar)
+
+
+    def _YearFractions_(self):
+            curvesettledate = self.dfcurveparams['SettleDate'].iloc[0]
+            for i in range(len(self.dfcurve)):
+                daycntconv = self.dfcurve['Daycount'].iloc[i]
+                if i == 0:
+                    self.dfcurve.loc[self.dfcurve.index[i],'YearFraction'] = \
+                        self._YFrac_(curvesettledate, self.dfcurve['Date'].iloc[i], daycntconv)  
+                else:
+                    self.dfcurve.loc[self.dfcurve.index[i], 'YearFraction'] = \
+                        self._YFrac_(self.dfcurve['Date'].iloc[i-1], self.dfcurve['Date'].iloc[i], daycntconv)
+                self.dfcurve.loc[self.dfcurve.index[i], 'CumYearFraction'] = \
+                self._YFrac_(curvesettledate, self.dfcurve['Date'].iloc[i], 
+                            daycntconv)
+    fileout = "yieldcurve.xlsx"
+    self.dfcurve.to_excel(fileout, sheet_name='yieldcurve', index=True)
+
+
+    def _ZeroRates_(self):
+        for i in range(len(self.dfcurve)):
+            if self.dfcurve['Type'].iloc[i] == 'Deposit':
+                self.dfcurve.loc[self.dfcurve.index[i],'ZeroRate'] = \
+                        (1 / self.dfcurve['CumYearFraction'].iloc[i]) * \
+                         np.log([1.0 + self.dfcurve['SwapRate'].iloc[i] * \
+                         
+                         self.dfcurve['CumYearFraction'].iloc[i]])
+                
+
+                
