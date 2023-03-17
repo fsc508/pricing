@@ -178,8 +178,51 @@ class YieldCurve(CurveDate,CountryHoliday):
                 self.dfcurve.loc[self.dfcurve.index[i],'ZeroRate'] = \
                         (1 / self.dfcurve['CumYearFraction'].iloc[i]) * \
                          np.log([1.0 + self.dfcurve['SwapRate'].iloc[i] * \
-                         
-                         self.dfcurve['CumYearFraction'].iloc[i]])
+                                self.dfcurve['CumYearFraction'].iloc[i]])
+            elif self.dfcurve['Type'].iloc[i] == 'EuroDollarFuture':
+                rate_continuous = 0.0
+                rate_continuous = 4 * np.log([1.0 + self.dfcurve['SwapRate'].iloc[i] * \
+                                              self.dfcurve['YearFraction'].iloc[i]])
+                self.dfcurve.loc[self.dfcurve.index[i], 'ZeroRate'] = \
+                        (rate_continuous * self.dfcurve['YearFraction'].iloc[i] + \
+                        self.dfcurve['ZeroRate'].iloc[i-1] * self.dfcurve['CumYearFraction'].iloc[i-1]) / \
+                            self.dfcurve['CumYearFraction'].iloc[i]
+            else:
+                sumproduct = 0.0     
+                    
+                if self.dfcurve['Type'].iloc[i] == 'Swap':
+                    frequency = self.dfcurve['Frequency'].iloc[i]
+                    term = int(self.dfcurve.index[i][:-1])
+                    swap_year_fractions = self._SwapYearFractions_(frequency,term)
+                    # set up interpolation object
+                    x = pd.Series(self.dfcurve['CumYearFraction'][:i])
+                    y = pd.Series(self.dfcurve['ZeroRate'][:i])
+                    zero_tck = interpolate.splrep(x,y)
+                    
+                for swap_yf in swap_year_fractions:
+                    zero_rate = 0.0
+                    zero_rate = interpolate.splev(swap_yf, zero_tck)
+                    sumproduct = sumproduct + (self.dfcurve['SwapRate'].iloc[i] / 2.0) * \
+                                 np.exp(-zero_rate * swap_yf)
+               
+                self.dfcurve.loc[self.dfcurve.index[i], 'ZeroRate'] = (-1 * np.log((1.0 - sumproduct) / \
+                            (1.0 + self.dfcurve['SwapRate'].iloc[i] / 2.0))) / \
+                            self.dfcurve['CumYearFraction'].iloc[i]
                 
+        fileout = "yieldcurve.xlsx"
+        
+self.dfcurve.to_excel(fileout, sheet_name='yieldcurve', index=True)    
+
+
+def _DiscountFactors_(self):
+        for i in range(len(self.dfcurve)):
+            rate_i = self.dfcurve['SwapRate'].iloc[i]
+            yearfraction_i = self.dfcurve['YearFraction'].iloc[i]
+            cumyearfraction_i = self.dfcurve['CumYearFraction'].iloc[i]
+           
+ self.dfcurve.loc[self.dfcurve.index[i], 'DiscountFactor'] = np.exp(-rate_i * cumyearfraction_i)
+
+
+
 
                 
